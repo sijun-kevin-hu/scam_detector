@@ -102,7 +102,7 @@ export async function analyzeMessage(
     let riskScore = 0;
 
     // Check for each scam pattern
-    for (const [patternKey, pattern] of Object.entries(SCAM_PATTERNS)) {
+    for (const [_, pattern] of Object.entries(SCAM_PATTERNS)) {
         const matchedKeywords = pattern.keywords.filter((keyword) =>
             messageLower.includes(keyword.toLowerCase())
         );
@@ -182,8 +182,8 @@ export async function analyzeMessage(
             "This message appears to be legitimate with no obvious scam indicators detected. However, always exercise caution when sharing personal information or clicking on links.";
     } else if (riskLevel === "low") {
         explanation = `This message shows minimal risk indicators. ${detectedPatterns.length > 0
-                ? "While some patterns were detected, they may be used in legitimate contexts."
-                : "No significant scam patterns were found."
+            ? "While some patterns were detected, they may be used in legitimate contexts."
+            : "No significant scam patterns were found."
             } Always verify the sender's identity before taking action.`;
     } else if (riskLevel === "medium") {
         explanation = `This message contains several concerning elements that are commonly found in scam attempts. The use of ${detectedPatterns[0]?.toLowerCase() || "suspicious language"

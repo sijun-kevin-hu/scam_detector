@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
         let body;
         try {
             body = await request.json();
-        } catch (parseError) {
+        } catch {
             return NextResponse.json(
                 {
                     error: "Invalid request format",
