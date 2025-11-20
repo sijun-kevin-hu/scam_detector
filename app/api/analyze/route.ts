@@ -109,6 +109,18 @@ export async function POST(request: NextRequest) {
             timestamp: new Date().toISOString()
         });
 
+        // Handle missing API key specifically
+        if (errorMessage.includes("GEMINI_API_KEY is not configured")) {
+            return NextResponse.json(
+                {
+                    error: "Configuration Error",
+                    details: "The server is missing the API key configuration. Please check your environment variables.",
+                    code: "MISSING_API_KEY"
+                },
+                { status: 500 }
+            );
+        }
+
         return NextResponse.json(
             {
                 error: "Analysis failed",
