@@ -17,7 +17,7 @@ export async function analyzeMessage(
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         const prompt = `
       Analyze the following message for scam indicators. Act as a cybersecurity expert.
