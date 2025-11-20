@@ -1,7 +1,11 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ScamAnalysisResult } from "./types";
 
+// Initialize Gemini API
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
 /**
- * Pattern definitions for scam detection
+ * Pattern definitions for scam detection (Fallback logic)
  * Each pattern includes keywords and a description
  */
 const SCAM_PATTERNS = {
@@ -87,15 +91,9 @@ const SCAM_PATTERNS = {
 };
 
 /**
- * Analyzes a message for scam indicators
- * This is a mock implementation that can be replaced with a real LLM API call
+ * Fallback heuristic analysis when API is unavailable
  */
-export async function analyzeMessage(
-    message: string
-): Promise<ScamAnalysisResult> {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
+function analyzeHeuristically(message: string): ScamAnalysisResult {
     const messageLower = message.toLowerCase();
     const detectedPatterns: string[] = [];
     const suspiciousPhrases: string[] = [];
@@ -109,14 +107,12 @@ export async function analyzeMessage(
 
         if (matchedKeywords.length > 0) {
             detectedPatterns.push(pattern.description);
-            // Add matched keywords as suspicious phrases
-            suspiciousPhrases.push(...matchedKeywords.slice(0, 3)); // Limit to 3 per pattern
-            // Increase risk score based on pattern type and number of matches
+            suspiciousPhrases.push(...matchedKeywords.slice(0, 3));
             riskScore += 15 + matchedKeywords.length * 5;
         }
     }
 
-    // Check for grammar/spelling issues (simplistic check)
+    // Check for grammar/spelling issues
     const hasMultipleExclamations = (message.match(/!/g) || []).length > 2;
     const hasAllCaps =
         message.split(" ").filter((word) => word.length > 3 && word === word.toUpperCase())
@@ -128,7 +124,7 @@ export async function analyzeMessage(
         riskScore += 10;
     }
 
-    // Check for suspicious links (basic check)
+    // Check for suspicious links
     const hasLinks = /https?:\/\/|www\./i.test(message);
     const hasShortenedLinks = /(bit\.ly|tinyurl|goo\.gl)/i.test(message);
     if (hasShortenedLinks) {
@@ -195,7 +191,6 @@ export async function analyzeMessage(
             .join(" and ")} are major red flags. Do not click any links, provide personal information, or send money. Contact the organization directly using official contact information to verify.`;
     }
 
-    // Remove duplicates from suspicious phrases
     const uniquePhrases = Array.from(new Set(suspiciousPhrases)).slice(0, 8);
 
     return {
@@ -205,4 +200,66 @@ export async function analyzeMessage(
         patterns: detectedPatterns.length > 0 ? detectedPatterns : ["No scam patterns detected"],
         suspiciousPhrases: uniquePhrases,
     };
+}
+
+/**
+ * Analyzes a message for scam indicators using Google Gemini API
+ * Falls back to heuristic analysis if API key is missing or request fails
+ */
+export async function analyzeMessage(
+    message: string
+): Promise<ScamAnalysisResult> {
+    // Check if API key is available
+    if (!process.env.GEMINI_API_KEY) {
+        console.warn("GEMINI_API_KEY not found, falling back to heuristic analysis");
+        return analyzeHeuristically(message);
+    }
+
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const prompt = `
+      Analyze the following message for scam indicators. Act as a cybersecurity expert.
+      
+      Message: "${message}"
+      
+      Return a JSON object with the following structure:
+      {
+        "riskScore": number (0-100),
+        "riskLevel": "low" | "medium" | "high",
+        "explanation": "string (2-3 sentences explaining why)",
+        "patterns": ["string", "string"] (list of detected scam patterns, e.g., "Urgency", "Phishing"),
+        "suspiciousPhrases": ["string", "string"] (exact phrases from the text that are suspicious)
+      }
+
+      Strictly return ONLY the JSON object. Do not include markdown formatting like \`\`\`json.
+    `;
+
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 500,
+            },
+        });
+
+        const response = result.response;
+        const text = response.text();
+
+        // Clean up potential markdown formatting if the model ignores instructions
+        const jsonStr = text.replace(/```json\n?|\n?```/g, "").trim();
+
+        const analysis = JSON.parse(jsonStr) as ScamAnalysisResult;
+
+        // Validate the result structure roughly
+        if (typeof analysis.riskScore !== 'number' || !analysis.riskLevel) {
+            throw new Error("Invalid API response structure");
+        }
+
+        return analysis;
+
+    } catch (error) {
+        console.error("Gemini API error:", error);
+        return analyzeHeuristically(message);
+    }
 }
