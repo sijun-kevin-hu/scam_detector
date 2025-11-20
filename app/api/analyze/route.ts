@@ -1,12 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeMessage } from "@/lib/analyze";
 
+// Simple in-memory rate limiter
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 10; // 10 requests per minute
+const ipRequestCounts = new Map<string, { count: number; resetTime: number }>();
+
 /**
  * POST /api/analyze
  * Analyzes a message for scam indicators
  */
 export async function POST(request: NextRequest) {
     try {
+        // Rate Limiting
+        const ip = request.headers.get("x-forwarded-for") || "unknown";
+        const now = Date.now();
+        const userRate = ipRequestCounts.get(ip) || { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
+
+        if (now > userRate.resetTime) {
+            userRate.count = 1;
+            userRate.resetTime = now + RATE_LIMIT_WINDOW;
+        } else {
+            userRate.count++;
+        }
+
+        ipRequestCounts.set(ip, userRate);
+
+        if (userRate.count > MAX_REQUESTS_PER_WINDOW) {
+            return NextResponse.json(
+                {
+                    error: "Too many requests",
+                    details: "You have exceeded the rate limit. Please try again in a minute.",
+                    code: "RATE_LIMIT_EXCEEDED"
+                },
+                { status: 429 }
+            );
+        }
+
         // Parse request body
         let body;
         try {
